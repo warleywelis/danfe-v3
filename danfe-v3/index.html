@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>DANFE Reader</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- Google AdSense: substitua ca-pub-XXXXXXXXXXXXXXXX pelo seu Publisher ID depois de aprovado -->
+<!-- <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script> -->
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #161a22;
+    --surface2: #1e2430;
+    --border: #2a3040;
+    --accent: #00e5a0;
+    --accent2: #0066ff;
+    --warn: #ff6b35;
+    --text: #e8ecf4;
+    --text2: #8892a4;
+    --text3: #4a5568;
+    --radius: 12px;
+    --font-mono: 'Space Mono', monospace;
+    --font: 'DM Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: var(--font); min-height: 100vh; overflow-x: hidden;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,160,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,160,0.03) 1px, transparent 1px);
+    background-size: 40px 40px; pointer-events: none; z-index: 0;
+  }
+  #app { position: relative; z-index: 1; max-width: 680px; margin: 0 auto; padding: 24px 16px 60px; }
+
+  header {
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 36px; padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo-icon {
+    width: 44px; height: 44px; background: var(--accent);
+    border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .logo-icon svg { width: 24px; height: 24px; }
+  header h1 { font-family: var(--font-mono); font-size: 1.4rem; font-weight: 700; letter-spacing: -0.5px; }
+  header p { font-size: 0.8rem; color: var(--text2); margin-top: 2px; }
+  .badge {
+    margin-left: auto;
+    background: rgba(0,229,160,0.1); border: 1px solid rgba(0,229,160,0.3);
+    color: var(--accent); font-size: 0.7rem; font-family: var(--font-mono);
+    padding: 4px 10px; border-radius: 20px; white-space: nowrap;
+  }
+
+  .tabs {
+    display: flex; gap: 4px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 4px; margin-bottom: 24px;
+  }
+  .tab {
+    flex: 1; padding: 10px 8px; background: transparent; border: none; cursor: pointer;
+    border-radius: 8px; color: var(--text2); font-family: var(--font);
+    font-size: 0.85rem; font-weight: 500; transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .tab.active { background: var(--surface2); color: var(--accent); box-shadow: 0 0 0 1px var(--border); }
+  .tab svg { width: 16px; height: 16px; }
+
+  .panel { display: none; animation: fadeIn 0.3s ease; }
+  .panel.active { display: block; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+  .scanner-wrap {
+    position: relative; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    overflow: hidden; aspect-ratio: 4/3; margin-bottom: 16px;
+  }
+  #scanner-container { width: 100%; height: 100%; background: #000; }
+  #scanner-container video, #scanner-container canvas { width: 100% !important; height: 100% !important; object-fit: cover; }
+  .scanner-overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center; pointer-events: none;
+  }
+  .scanner-frame {
+    width: 70%; height: 35%; border: 2px solid var(--accent); border-radius: 8px;
+    box-shadow: 0 0 0 2000px rgba(0,0,0,0.5); position: relative;
+  }
+  .scanner-frame::before {
+    content: ''; position: absolute; top: 50%; left: 0; right: 0;
+    height: 2px; background: var(--accent); opacity: 0.7;
+    animation: scan 2s ease-in-out infinite;
+  }
+  @keyframes scan { 0%,100% { top:10%; } 50% { top:90%; } }
+  .scanner-corner { position: absolute; width: 16px; height: 16px; border-color: var(--accent); border-style: solid; border-width: 0; }
+  .scanner-corner.tl { top:-2px; left:-2px; border-top-width:3px; border-left-width:3px; border-radius:3px 0 0 0; }
+  .scanner-corner.tr { top:-2px; right:-2px; border-top-width:3px; border-right-width:3px; border-radius:0 3px 0 0; }
+  .scanner-corner.bl { bottom:-2px; left:-2px; border-bottom-width:3px; border-left-width:3px; border-radius:0 0 0 3px; }
+  .scanner-corner.br { bottom:-2px; right:-2px; border-bottom-width:3px; border-right-width:3px; border-radius:0 0 3px 0; }
+
+  .scanner-placeholder {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; gap: 12px; padding: 24px; text-align: center;
+  }
+  .scanner-placeholder svg { width: 56px; height: 56px; color: var(--text3); }
+  .scanner-placeholder p { color: var(--text2); font-size: 0.9rem; line-height: 1.5; }
+
+  .input-group { margin-bottom: 16px; }
+  label { display: block; font-size: 0.78rem; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  input[type="text"] {
+    width: 100%; padding: 12px 16px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); font-family: var(--font-mono); font-size: 0.85rem;
+    transition: border-color 0.2s, box-shadow 0.2s; outline: none;
+  }
+  input[type="text"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,229,160,0.1); }
+  input[type="text"]::placeholder { color: var(--text3); }
+
+  .btn {
+    width: 100%; padding: 14px; border: none; border-radius: var(--radius);
+    font-family: var(--font); font-size: 0.95rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-primary { background: var(--accent); color: #0d0f14; }
+  .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-danger { background: rgba(255,107,53,0.15); color: var(--warn); border: 1px solid rgba(255,107,53,0.3); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
+
+  .status-bar {
+    padding: 12px 16px; border-radius: 8px; font-size: 0.85rem;
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+  }
+  .status-bar.info { background: rgba(0,102,255,0.1); border: 1px solid rgba(0,102,255,0.2); color: #6699ff; }
+  .status-bar.success { background: rgba(0,229,160,0.1); border: 1px solid rgba(0,229,160,0.2); color: var(--accent); }
+  .status-bar.error { background: rgba(255,107,53,0.1); border: 1px solid rgba(255,107,53,0.2); color: var(--warn); }
+  .status-bar.loading { background: rgba(255,200,50,0.08); border: 1px solid rgba(255,200,50,0.2); color: #ffc832; }
+  .status-bar.warn { background: rgba(255,200,50,0.08); border: 1px solid rgba(255,200,50,0.2); color: #ffc832; }
+  .spinner {
+    width: 16px; height: 16px; border: 2px solid rgba(255,200,50,0.3);
+    border-top-color: #ffc832; border-radius: 50%;
+    animation: spin 0.8s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .result-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden; margin-top: 8px;
+    animation: slideUp 0.4s ease;
+  }
+  @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:none; } }
+
+  .result-header {
+    padding: 18px 20px;
+    background: linear-gradient(135deg, rgba(0,229,160,0.08), rgba(0,102,255,0.05));
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  }
+  .result-header h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
+  .result-header .chave { font-family: var(--font-mono); font-size: 0.65rem; color: var(--text2); word-break: break-all; line-height: 1.6; }
+  .nfe-status {
+    flex-shrink: 0; padding: 5px 12px; border-radius: 20px;
+    font-size: 0.72rem; font-weight: 700; font-family: var(--font-mono);
+    background: rgba(0,229,160,0.15); color: var(--accent); border: 1px solid rgba(0,229,160,0.3);
+  }
+
+  .section { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .section:last-child { border-bottom: none; }
+  .section-title {
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--text3); margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 480px) { .info-grid { grid-template-columns: 1fr; } }
+
+  .info-item label { font-size: 0.68rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+  .info-item p { font-size: 0.9rem; color: var(--text); font-weight: 500; }
+  .info-item p.mono { font-family: var(--font-mono); font-size: 0.78rem; }
+
+  .products-table { width: 100%; border-collapse: collapse; }
+  .products-table th { text-align: left; font-size: 0.68rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; padding: 0 8px 10px; }
+  .products-table td { padding: 10px 8px; font-size: 0.85rem; border-top: 1px solid var(--border); }
+  .products-table tr:first-child td { border-top: none; }
+  .products-table .qty { color: var(--text2); font-family: var(--font-mono); }
+  .products-table .val { color: var(--accent); font-family: var(--font-mono); font-weight: 700; text-align: right; }
+  .products-table th:last-child { text-align: right; }
+
+  .totals-list { display: flex; flex-direction: column; gap: 8px; }
+  .total-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.88rem; }
+  .total-row span:first-child { color: var(--text2); }
+  .total-row span:last-child { font-family: var(--font-mono); color: var(--text); }
+  .total-row.main { padding-top: 12px; margin-top: 4px; border-top: 1px solid var(--border); }
+  .total-row.main span:first-child { font-weight: 700; color: var(--text); font-size: 1rem; }
+  .total-row.main span:last-child { color: var(--accent); font-size: 1.1rem; font-weight: 700; }
+
+  .transport-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 12px;
+    font-size: 0.82rem; color: var(--text2); margin-bottom: 12px;
+  }
+
+  .result-actions {
+    padding: 16px 20px; display: flex; gap: 8px;
+    border-top: 1px solid var(--border); background: rgba(0,0,0,0.2);
+  }
+  .result-actions .btn { flex: 1; padding: 11px; font-size: 0.85rem; }
+
+  .partial-note {
+    margin: 12px 20px; padding: 10px 14px;
+    background: rgba(255,200,50,0.06); border: 1px solid rgba(255,200,50,0.2);
+    border-radius: 8px; font-size: 0.78rem; color: #ffc832; line-height: 1.5;
+  }
+
+  .demo-note {
+    padding: 12px 16px;
+    background: rgba(0,102,255,0.08); border: 1px solid rgba(0,102,255,0.2);
+    border-radius: 8px; font-size: 0.8rem; color: #6699ff; line-height: 1.5; margin-top: 16px;
+  }
+
+  /* ── SHARE BUTTON ── */
+  .btn-share {
+    background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+    position: relative; overflow: hidden;
+  }
+  .btn-share:hover { border-color: #25d366; color: #25d366; }
+
+  /* ── BOTTOM SHEET OVERLAY ── */
+  .sheet-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    z-index: 1000; display: flex; align-items: flex-end;
+    opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    backdrop-filter: blur(4px);
+  }
+  .sheet-overlay.open { opacity: 1; pointer-events: all; }
+  .sheet {
+    width: 100%; max-width: 680px; margin: 0 auto;
+    background: var(--surface); border-radius: 20px 20px 0 0;
+    border: 1px solid var(--border); border-bottom: none;
+    padding: 0 0 env(safe-area-inset-bottom, 16px);
+    transform: translateY(100%); transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .sheet-overlay.open .sheet { transform: translateY(0); }
+
+  .sheet-handle {
+    width: 40px; height: 4px; background: var(--border);
+    border-radius: 2px; margin: 12px auto 0;
+  }
+  .sheet-title {
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--text3);
+    padding: 16px 20px 12px;
+  }
+
+  /* SHARE GRID */
+  .share-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 4px; padding: 4px 12px 8px;
+  }
+  .share-btn {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 7px; padding: 14px 8px; border-radius: 12px;
+    border: none; background: transparent; cursor: pointer;
+    transition: background 0.15s; -webkit-tap-highlight-color: transparent;
+  }
+  .share-btn:active { background: var(--surface2); }
+  .share-icon {
+    width: 48px; height: 48px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem; flex-shrink: 0;
+    transition: transform 0.15s;
+  }
+  .share-btn:active .share-icon { transform: scale(0.9); }
+  .share-btn span { font-size: 0.7rem; color: var(--text2); font-family: var(--font); font-weight: 500; text-align: center; line-height: 1.2; }
+
+  .share-divider { height: 1px; background: var(--border); margin: 4px 20px; }
+
+  /* NATIVE SHARE ROW */
+  .share-native-row {
+    display: flex; gap: 10px; padding: 12px 16px 16px;
+  }
+  .share-native-row .btn { font-size: 0.85rem; padding: 12px; }
+
+  /* ── GOOGLE ADS FOOTER ── */
+  .ads-footer {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    z-index: 500; display: flex; flex-direction: column; align-items: center;
+  }
+  .ads-close {
+    align-self: flex-end; margin-right: 8px; margin-bottom: 2px;
+    background: rgba(0,0,0,0.6); border: 1px solid var(--border);
+    color: var(--text2); border-radius: 50%; width: 22px; height: 22px;
+    font-size: 14px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .ads-banner {
+    width: 100%; max-width: 728px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 8px 16px 10px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .ads-label {
+    font-size: 0.6rem; color: var(--text3); text-transform: uppercase;
+    letter-spacing: 0.5px; align-self: flex-start;
+  }
+  /* Placeholder visual enquanto o AdSense não está ativo */
+  .ads-placeholder {
+    width: 100%; max-width: 320px; height: 50px;
+    background: var(--surface2); border: 1px dashed var(--border);
+    border-radius: 6px; display: flex; align-items: center; justify-content: center;
+  }
+  .ads-placeholder span { font-size: 0.72rem; color: var(--text3); }
+  /* Slot real do AdSense — substitui o placeholder */
+  .adsbygoogle { display: block; }
+
+  /* Espaço para o banner fixo não cobrir conteúdo */
+  body.has-ads { padding-bottom: 80px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0d0f14" stroke-width="2.5" stroke-linecap="round">
+        <rect x="3" y="3" width="5" height="14"/><rect x="10" y="3" width="2" height="14"/>
+        <rect x="14" y="3" width="1" height="14"/><rect x="17" y="3" width="4" height="14"/>
+        <line x1="3" y1="20" x2="21" y2="20"/>
+      </svg>
+    </div>
+    <div>
+      <h1>DANFE Reader</h1>
+      <p>Leitor e visualizador de NF-e</p>
+    </div>
+    <span class="badge">v2.0</span>
+  </header>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('scanner', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg>
+      Câmera
+    </button>
+    <button class="tab" onclick="switchTab('manual', this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 8h10M7 12h10M7 16h6"/></svg>
+      Chave Manual
+    </button>
+  </div>
+
+  <!-- SCANNER -->
+  <div id="panel-scanner" class="panel active">
+    <div class="scanner-wrap">
+      <div id="scanner-container">
+        <div class="scanner-placeholder" id="scanner-placeholder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+            <rect x="7" y="9" width="10" height="6" rx="1"/>
+          </svg>
+          <p>Pressione <strong>Iniciar Câmera</strong><br>e aponte para o código de barras da NF-e</p>
+        </div>
+      </div>
+      <div class="scanner-overlay" id="scanner-overlay" style="display:none;">
+        <div class="scanner-frame">
+          <div class="scanner-corner tl"></div><div class="scanner-corner tr"></div>
+          <div class="scanner-corner bl"></div><div class="scanner-corner br"></div>
+        </div>
+      </div>
+    </div>
+    <div id="scan-status" class="status-bar info" style="display:none;"></div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-primary" id="btn-start-scan" onclick="startScanner()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        Iniciar Câmera
+      </button>
+      <button class="btn btn-danger" id="btn-stop-scan" onclick="stopScanner()" style="display:none; flex:0.4;">Parar</button>
+    </div>
+    <div class="demo-note">
+      💡 <strong>Como usar:</strong> Aponte a câmera para o código de barras impresso no DANFE (44 dígitos). A leitura é automática.
+    </div>
+  </div>
+
+  <!-- MANUAL -->
+  <div id="panel-manual" class="panel">
+    <div class="input-group">
+      <label>Chave de Acesso (44 dígitos)</label>
+      <input type="text" id="chave-input" maxlength="44"
+        placeholder="00000000000000000000000000000000000000000000"
+        oninput="this.value=this.value.replace(/\D/g,'')"
+        onkeydown="if(event.key==='Enter') buscarNFe()">
+    </div>
+    <button class="btn btn-primary" onclick="buscarNFe()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      Consultar NF-e
+    </button>
+    <div id="manual-status" class="status-bar" style="display:none;"></div>
+  </div>
+
+  <div id="result-area" style="margin-top:24px;"></div>
+</div>
+
+<!-- ── BOTTOM SHEET: COMPARTILHAR ── -->
+<div class="sheet-overlay" id="share-overlay" onclick="closeShareSheet(event)">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Compartilhar NF-e</div>
+    <div class="share-grid">
+      <button class="share-btn" onclick="shareVia('whatsapp')">
+        <div class="share-icon" style="background:#25d36618;">
+          <svg width="26" height="26" viewBox="0 0 32 32" fill="#25d366"><path d="M16 3C9.373 3 4 8.373 4 15c0 2.385.668 4.607 1.832 6.5L4 29l7.75-1.813A11.94 11.94 0 0 0 16 28c6.627 0 12-5.373 12-12S22.627 3 16 3zm5.89 16.47c-.247.694-1.453 1.327-1.99 1.37-.537.044-1.044.213-3.506-.73-2.968-1.13-4.87-4.13-5.015-4.323-.147-.194-1.19-1.582-1.19-3.017s.752-2.14 1.02-2.432c.268-.293.585-.366.78-.366.196 0 .39.002.562.01.18.008.422-.068.661.505.247.587.84 2.04.914 2.188.073.147.122.32.024.514-.098.195-.147.317-.293.488-.147.17-.309.38-.44.51-.147.147-.3.307-.13.602.17.293.757 1.25 1.626 2.023 1.116 1 2.057 1.31 2.35 1.457.293.147.464.122.635-.073.17-.195.73-.854.924-1.147.195-.293.39-.244.66-.147.268.098 1.71.806 2.003.952.293.147.488.22.561.342.073.122.073.707-.174 1.4z"/></svg>
+        </div>
+        <span>WhatsApp</span>
+      </button>
+      <button class="share-btn" onclick="shareVia('telegram')">
+        <div class="share-icon" style="background:#2CA5E018;">
+          <svg width="26" height="26" viewBox="0 0 32 32" fill="#2CA5E0"><path d="M16 3C9.373 3 4 8.373 4 15c0 3.315 1.344 6.313 3.516 8.484L4 29l5.82-1.523A11.95 11.95 0 0 0 16 29c6.627 0 12-5.373 12-12S22.627 3 16 3zm5.94 8.08l-2.01 9.48c-.148.66-.537.82-1.087.51l-3-2.21-1.448 1.393c-.16.16-.295.295-.605.295l.215-3.053 5.566-5.026c.242-.215-.053-.334-.375-.119l-6.878 4.332-2.963-.924c-.644-.2-.657-.644.135-.953l11.566-4.46c.536-.194 1.005.13.875.735z"/></svg>
+        </div>
+        <span>Telegram</span>
+      </button>
+      <button class="share-btn" onclick="shareVia('email')">
+        <div class="share-icon" style="background:#EA433518;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#EA4335" stroke-width="2" stroke-linecap="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+        </div>
+        <span>E-mail</span>
+      </button>
+      <button class="share-btn" onclick="shareVia('sms')">
+        <div class="share-icon" style="background:#34A85318;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#34A853" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <span>SMS</span>
+      </button>
+      <button class="share-btn" onclick="shareVia('print')">
+        <div class="share-icon" style="background:#607D8B18;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#90A4AE" stroke-width="2" stroke-linecap="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        </div>
+        <span>Imprimir</span>
+      </button>
+      <button class="share-btn" onclick="shareVia('copy')">
+        <div class="share-icon" style="background:#9C27B018;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#CE93D8" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        </div>
+        <span>Copiar Link</span>
+      </button>
+      <button class="share-btn" onclick="shareVia('linkedin')">
+        <div class="share-icon" style="background:#0A66C218;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="#0A66C2"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 0 1-2.063-2.065 2.064 2.064 0 1 1 2.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+        </div>
+        <span>LinkedIn</span>
+      </button>
+      <button class="share-btn" onclick="shareVia('native')">
+        <div class="share-icon" style="background:#FF980018;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FF9800" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        </div>
+        <span>Mais apps</span>
+      </button>
+    </div>
+    <div class="share-divider"></div>
+    <div class="share-native-row">
+      <button class="btn btn-secondary" onclick="closeShareSheet()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── GOOGLE ADS BANNER FIXO NO RODAPÉ ── -->
+<div class="ads-footer" id="ads-footer">
+  <button class="ads-close" onclick="document.getElementById('ads-footer').style.display='none';document.body.classList.remove('has-ads');" title="Fechar">×</button>
+  <div class="ads-banner">
+    <span class="ads-label">Publicidade</span>
+    <!--
+      COMO ATIVAR O GOOGLE ADSENSE:
+      1. Acesse https://adsense.google.com e crie sua conta
+      2. Adicione seu domínio Vercel e aguarde aprovação (1-2 semanas)
+      3. Crie um anúncio "Banner responsivo" ou "320x50"
+      4. Descomente o script no <head> com seu ca-pub-XXXXXXXXXXXXXXXX
+      5. Substitua o bloco abaixo pelo código <ins> gerado pelo AdSense:
+
+      <ins class="adsbygoogle"
+           style="display:inline-block;width:320px;height:50px"
+           data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+           data-ad-slot="XXXXXXXXXX"></ins>
+      <script>(adsbygoogle = window.adsbygoogle || []).push({});<\/script>
+    -->
+    <div class="ads-placeholder">
+      <span>⬆ Espaço Google AdSense — configure após aprovação</span>
+    </div>
+  </div>
+</div>
+
+<script>
+let scannerRunning = false;
+let lastDetected = '';
+let currentChave = '';
+let currentNFeSummary = '';
+
+// ── COMPARTILHAMENTO ──────────────────────────────────────
+function openShareSheet(chave, summary) {
+  currentChave = chave;
+  currentNFeSummary = summary;
+  document.getElementById('share-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeShareSheet(e) {
+  if (e && e.target !== document.getElementById('share-overlay')) return;
+  document.getElementById('share-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function shareVia(platform) {
+  const url = 'https://meudanfe.com.br/danfe/' + currentChave;
+  const text = currentNFeSummary || 'NF-e: ' + currentChave;
+  const encodedText = encodeURIComponent(text);
+  const encodedUrl = encodeURIComponent(url);
+
+  const actions = {
+    whatsapp: () => window.open('https://wa.me/?text=' + encodedText + '%0A' + encodedUrl, '_blank'),
+    telegram: () => window.open('https://t.me/share/url?url=' + encodedUrl + '&text=' + encodedText, '_blank'),
+    email: () => window.open('mailto:?subject=NF-e ' + currentChave.slice(25,34) + '&body=' + encodedText + '%0A%0ADANFE: ' + encodedUrl),
+    sms: () => window.open('sms:?body=' + encodedText + '%0A' + encodedUrl),
+    print: () => { closeShareSheet(); setTimeout(() => window.open(url, '_blank'), 300); },
+    copy: () => { navigator.clipboard.writeText(text + '\n' + url).then(() => { showToast('Link copiado!'); closeShareSheet(); }); },
+    linkedin: () => window.open('https://www.linkedin.com/sharing/share-offsite/?url=' + encodedUrl, '_blank'),
+    native: () => {
+      if (navigator.share) {
+        navigator.share({ title: 'NF-e', text, url }).catch(() => {});
+      } else {
+        navigator.clipboard.writeText(text + '\n' + url).then(() => showToast('Link copiado!'));
+      }
+    },
+  };
+
+  const action = actions[platform];
+  if (action) action();
+  if (platform !== 'copy') setTimeout(() => { document.getElementById('share-overlay').classList.remove('open'); document.body.style.overflow = ''; }, 200);
+}
+
+function switchTab(tab, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('panel-' + tab).classList.add('active');
+  if (tab !== 'scanner' && scannerRunning) stopScanner();
+}
+
+function startScanner() {
+  document.getElementById('scanner-placeholder').style.display = 'none';
+  document.getElementById('scanner-overlay').style.display = 'flex';
+  document.getElementById('btn-start-scan').style.display = 'none';
+  document.getElementById('btn-stop-scan').style.display = 'flex';
+  showStatus('scan-status', 'loading', 'Iniciando câmera...');
+
+  Quagga.init({
+    inputStream: {
+      name: "Live", type: "LiveStream",
+      target: document.querySelector('#scanner-container'),
+      constraints: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+    },
+    decoder: { readers: ["i2of5_reader", "code_128_reader", "ean_reader", "codabar_reader"] },
+    locate: true,
+  }, function(err) {
+    if (err) {
+      showStatus('scan-status', 'error', '❌ Erro ao acessar câmera. Verifique as permissões do navegador.');
+      stopScanner(); return;
+    }
+    Quagga.start();
+    scannerRunning = true;
+    showStatus('scan-status', 'info', '📷 Câmera ativa — aponte para o código de barras da NF-e');
+  });
+
+  Quagga.onDetected(function(result) {
+    const code = result.codeResult.code.replace(/\D/g, '');
+    if (code.length === 44 && code !== lastDetected) {
+      lastDetected = code;
+      showStatus('scan-status', 'success', '✅ Código lido com sucesso!');
+      stopScanner();
+      processChave(code, 'scan');
+    }
+  });
+}
+
+function stopScanner() {
+  if (scannerRunning) { Quagga.stop(); scannerRunning = false; }
+  document.getElementById('scanner-placeholder').style.display = 'flex';
+  document.getElementById('scanner-overlay').style.display = 'none';
+  document.getElementById('btn-start-scan').style.display = 'flex';
+  document.getElementById('btn-stop-scan').style.display = 'none';
+}
+
+function buscarNFe() {
+  const chave = document.getElementById('chave-input').value.replace(/\D/g, '');
+  if (chave.length !== 44) {
+    showStatus('manual-status', 'error', '❌ A chave deve ter exatamente 44 dígitos numéricos.');
+    return;
+  }
+  processChave(chave, 'manual');
+}
+
+async function processChave(chave, origin) {
+  const statusId = origin === 'manual' ? 'manual-status' : 'scan-status';
+  showStatus(statusId, 'loading', 'Consultando NF-e...');
+
+  try {
+    const res = await fetch(`/api/nfe?chave=${chave}`);
+    if (!res.ok) throw new Error('Erro na API');
+    const data = await res.json();
+    showStatus(statusId, 'success', '✅ NF-e consultada com sucesso!');
+    renderResult(data, chave);
+  } catch (e) {
+    showStatus(statusId, 'error', '❌ Erro ao consultar. Verifique sua conexão.');
+  }
+}
+
+function renderResult(data, chave) {
+  const nfe = data.nfe || data;
+  const ide = nfe.ide || {};
+  const emit = nfe.emit || {};
+  const dest = nfe.dest || {};
+  const det = nfe.det || [];
+  const total = nfe.total?.ICMSTot || {};
+  const transp = nfe.transp || {};
+  const isPartial = nfe._partial || data._partial;
+
+  const dEmi = ide.dEmi ? new Date(ide.dEmi).toLocaleDateString('pt-BR') : '—';
+  const emitEnd = emit.enderEmit || {};
+  const destEnd = dest.enderDest || {};
+  const modFreteMap = {0:'Sem frete',1:'Emitente',2:'Destinatário',3:'Terceiros',4:'Próprio',9:'Sem transporte'};
+  const fmt = v => parseFloat(v||0).toLocaleString('pt-BR', {style:'currency',currency:'BRL'});
+
+  const sourceLabel = { meudanfe: '✅ Dados via meuDANFE', sefaz: '✅ Dados via SEFAZ', chave: '⚠️ Dados parciais — extraídos da chave' };
+  const sourceClass = data.source === 'chave' ? 'warn' : 'success';
+
+  let produtosHTML = '';
+  det.forEach(item => {
+    const p = item.prod || {};
+    produtosHTML += `<tr>
+      <td>
+        <div style="font-weight:500;">${p.xProd||'—'}</div>
+        <div style="font-size:0.72rem;color:var(--text3);margin-top:2px;">${p.cProd||''} · NCM ${p.NCM||''}</div>
+      </td>
+      <td class="qty">${parseFloat(p.qCom||0).toFixed(0)} ${p.uCom||''}</td>
+      <td class="val">${fmt(p.vProd)}</td>
+    </tr>`;
+  });
+
+  // Texto para compartilhamento
+  const shareText = `NF-e nº ${(ide.nNF||'').toString().padStart(9,'0')} — ${emit.xNome||'Emitente'} → ${dest.xNome||'Destinatário'} | Total: ${fmt(total.vNF)} | Data: ${dEmi}`;
+
+  document.getElementById('result-area').innerHTML = `
+    <div class="status-bar ${sourceClass}" style="margin-bottom:12px;">
+      ${sourceLabel[data.source] || '✅ Dados carregados'}
+    </div>
+    <div class="result-card">
+      <div class="result-header">
+        <div>
+          <h2>NF-e nº ${(ide.nNF||'').toString().padStart(9,'0')}</h2>
+          <div class="chave">${formatChaveDisplay(chave)}</div>
+          <div style="margin-top:8px;font-size:0.78rem;color:var(--text2);">${ide.natOp||''} · ${dEmi}</div>
+        </div>
+        <span class="nfe-status">AUTORIZADA</span>
+      </div>
+
+      ${isPartial ? `<div class="partial-note">⚠️ Dados completos indisponíveis. Baixe o DANFE em PDF para ver todos os detalhes.</div>` : ''}
+
+      <div class="section">
+        <div class="section-title">Emitente &amp; Destinatário</div>
+        <div class="info-grid">
+          <div>
+            <div style="font-size:0.68rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Emitente</div>
+            <div class="info-item"><label>Razão Social</label><p>${emit.xNome||'—'}</p></div>
+            ${emit.xFant?`<div class="info-item" style="margin-top:10px;"><label>Fantasia</label><p>${emit.xFant}</p></div>`:''}
+            <div class="info-item" style="margin-top:10px;"><label>CNPJ</label><p class="mono">${formatCNPJ(emit.CNPJ||'')}</p></div>
+            <div class="info-item" style="margin-top:10px;"><label>Local</label><p style="font-size:0.82rem;">${emitEnd.xMun||''} ${emitEnd.UF?'/ '+emitEnd.UF:''}</p></div>
+          </div>
+          <div>
+            <div style="font-size:0.68rem;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Destinatário</div>
+            <div class="info-item"><label>Nome</label><p>${dest.xNome||'—'}</p></div>
+            <div class="info-item" style="margin-top:10px;"><label>${dest.CNPJ?'CNPJ':'CPF'}</label><p class="mono">${dest.CNPJ?formatCNPJ(dest.CNPJ):(dest.CPF||'—')}</p></div>
+            <div class="info-item" style="margin-top:10px;"><label>Local</label><p style="font-size:0.82rem;">${destEnd.xMun||''} ${destEnd.UF?'/ '+destEnd.UF:''}</p></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Produtos (${det.length} ${det.length===1?'item':'itens'})</div>
+        ${det.length ? `<table class="products-table">
+          <thead><tr><th>Produto</th><th>Qtd</th><th>Valor</th></tr></thead>
+          <tbody>${produtosHTML}</tbody>
+        </table>` : `<p style="color:var(--text3);font-size:0.85rem;">Detalhes dos produtos disponíveis no DANFE em PDF.</p>`}
+      </div>
+
+      <div class="section">
+        <div class="section-title">Valores</div>
+        <div class="totals-list">
+          ${parseFloat(total.vProd||0)>0?`<div class="total-row"><span>Produtos</span><span>${fmt(total.vProd)}</span></div>`:''}
+          ${parseFloat(total.vFrete||0)>0?`<div class="total-row"><span>Frete</span><span>${fmt(total.vFrete)}</span></div>`:''}
+          ${parseFloat(total.vDesc||0)>0?`<div class="total-row"><span>Desconto</span><span>- ${fmt(total.vDesc)}</span></div>`:''}
+          ${parseFloat(total.vICMS||0)>0?`<div class="total-row"><span>ICMS</span><span>${fmt(total.vICMS)}</span></div>`:''}
+          ${parseFloat(total.vNF||0)>0
+            ?`<div class="total-row main"><span>Total NF-e</span><span>${fmt(total.vNF)}</span></div>`
+            :`<p style="color:var(--text3);font-size:0.85rem;">Valores disponíveis no DANFE em PDF.</p>`}
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Transporte</div>
+        <div class="transport-tag">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+          Frete: ${modFreteMap[transp.modFrete] ?? 'Não informado'}
+        </div>
+        ${transp.transporta?.xNome?`
+        <div class="info-grid">
+          <div class="info-item"><label>Transportadora</label><p>${transp.transporta.xNome}</p></div>
+          <div class="info-item"><label>Local</label><p>${transp.transporta.xMun||''} ${transp.transporta.UF||''}</p></div>
+          ${transp.vol?.[0]?`<div class="info-item"><label>Volumes</label><p>${transp.vol[0].qVol}</p></div>
+          <div class="info-item"><label>Peso Bruto</label><p>${transp.vol[0].pesoB} kg</p></div>`:''}
+        </div>`:`<p style="color:var(--text3);font-size:0.85rem;">Sem transportadora informada.</p>`}
+      </div>
+
+      <div class="result-actions">
+        <button class="btn btn-primary" onclick="downloadDANFE('${chave}')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Baixar PDF
+        </button>
+        <button class="btn btn-secondary" style="flex:0.6;" onclick="openShareSheet('${chave}', shareText)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          Compartilhar
+        </button>
+      </div>
+    </div>`;
+}
+
+function downloadDANFE(chave) {
+  window.open(`https://meudanfe.com.br/danfe/${chave}`, '_blank');
+  showToast('Abrindo DANFE em PDF...');
+}
+
+function copiarChave(chave) {
+  navigator.clipboard.writeText(chave).then(() => showToast('Chave copiada!')).catch(() => showToast('Erro ao copiar'));
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  Object.assign(t.style, {
+    position:'fixed', bottom:'24px', left:'50%', transform:'translateX(-50%)',
+    background:'var(--accent)', color:'#0d0f14', padding:'10px 20px',
+    borderRadius:'8px', fontWeight:'600', fontSize:'0.85rem', zIndex:'9999',
+    whiteSpace:'nowrap', boxShadow:'0 4px 20px rgba(0,229,160,0.3)'
+  });
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+// Init ads padding
+document.addEventListener('DOMContentLoaded', () => {
+  document.body.classList.add('has-ads');
+});
+
+function formatChaveDisplay(c) {
+  return c ? c.replace(/(\d{4})(?=\d)/g, '$1 ').trim() : '—';
+}
+function formatCNPJ(c) {
+  return c.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') || c;
+}
+function showStatus(id, type, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = 'flex'; el.className = `status-bar ${type}`;
+  el.innerHTML = type === 'loading' ? `<div class="spinner"></div>${msg}` : msg;
+}
+</script>
+</body>
+</html>
